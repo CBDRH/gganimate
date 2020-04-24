@@ -28,6 +28,7 @@
 #' @param start_pause,end_pause Number of times to repeat the first and last
 #' frame in the animation (default is `0` for both)
 #' @param rewind Should the animation roll back in the end (default `FALSE`)
+#' @param update_progress Call-back function to update progress indicator
 #' @param ... Arguments passed on to the device
 #'
 #' @return The return value of the [renderer][renderers] function
@@ -115,7 +116,8 @@ animate.default <- function(plot, ...) {
 }
 #' @rdname animate
 #' @export
-animate.gganim <- function(plot, nframes, fps, duration, detail, renderer, device, ref_frame, start_pause, end_pause, rewind, ...) {
+animate.gganim <- function(plot, nframes, fps, duration, detail, renderer,
+                           device, ref_frame, start_pause, end_pause, rewind, update_progress, ...) {
   args <- prepare_args(
     nframes = nframes,
     fps = fps,
@@ -127,6 +129,7 @@ animate.gganim <- function(plot, nframes, fps, duration, detail, renderer, devic
     start_pause = start_pause,
     end_pause = end_pause,
     rewind = rewind,
+    update_progress = update_progress,
     ...
   )
   if (is_knitting() && identical(def_ren$renderer, args$renderer) && !def_ren$has_proper) {
@@ -167,7 +170,8 @@ animate.gganim <- function(plot, nframes, fps, duration, detail, renderer, devic
     c(list(plot = plot,
            frames = frame_ind,
            device = args$device,
-           ref_frame = args$ref_frame),
+           ref_frame = args$ref_frame,
+           update_progress = args$update_progress),
       args$dev_args)
   )
   if (args$device == 'current') return(invisible(frames_vars))
@@ -199,7 +203,8 @@ gganimate <- function(...) {
 gg_animate <- gganimate
 
 #' @importFrom utils modifyList
-prepare_args <- function(nframes, fps, duration, detail, renderer, device, ref_frame, start_pause, end_pause, rewind, ...) {
+prepare_args <- function(nframes, fps, duration, detail, renderer,
+                         device, ref_frame, start_pause, end_pause, rewind, update_progress, ...) {
   args <- list()
   chunk_args <- if (is_knitting()) get_knitr_options(knitr::opts_chunk$get(), unlist = FALSE) else list(dev_args = list())
   args$nframes <- nframes %?% chunk_args$nframes %||% getOption('gganimate.nframes', 100)
@@ -226,7 +231,8 @@ prepare_args <- function(nframes, fps, duration, detail, renderer, device, ref_f
   args$start_pause <- start_pause %?% chunk_args$start_pause %||% getOption('gganimate.start_pause', 0)
   args$end_pause <- end_pause %?% chunk_args$end_pause %||% getOption('gganimate.end_pause', 0)
   args$rewind <- rewind %?% chunk_args$rewind %||% getOption('gganimate.rewind', FALSE)
-  dev_args <- list(...)
+  args$update_progress <- update_progress
+  dev_args <- list(update_progress, ...)
   args$dev_args <- if (length(dev_args) > 0) {
     modifyList(getOption('gganimate.dev_args', list()), dev_args)
   } else {
@@ -242,7 +248,7 @@ prerender <- function(plot, nframes) {
 # Draw each frame as an image based on a specified device
 # Returns a data.frame of frame metadata with image location in frame_source
 # column
-draw_frames <- function(plot, frames, device, ref_frame, ...) {
+draw_frames <- function(plot, frames, device, ref_frame, update_progress, ...) {
   stream <- device == 'current'
 
   dims <- tryCatch(
@@ -300,6 +306,16 @@ draw_frames <- function(plot, frames, device, ref_frame, ...) {
 
     rate <- i/as.double(Sys.time() - start, units = 'secs')
     if (is.nan(rate)) rate <- 0
+
+     # send update to shiny progress
+     if(is.function(update_progress)) {
+       frames_left <- length(frames) - i
+       projected_secs <- as.difftime(frames_left / rate, units = "secs")
+       eta <- prettyunits::vague_dt(projected_secs, format = "terse")
+       detail <- paste0("at ", format(rate, digits = 2), " fps ~ eta: ", eta)
+       update_progress(detail)
+     }
+
     rate <- format(rate, digits = 2)
     pb$tick(tokens = list(fps = rate))
 

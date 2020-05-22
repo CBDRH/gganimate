@@ -117,7 +117,7 @@ animate.default <- function(plot, ...) {
 #' @rdname animate
 #' @export
 animate.gganim <- function(plot, nframes, fps, duration, detail, renderer,
-                           device, ref_frame, start_pause, end_pause, rewind, update_progress, ...) {
+                           device, ref_frame, start_pause, end_pause, rewind, update_progress=NULL, ...) {
   args <- prepare_args(
     nframes = nframes,
     fps = fps,
